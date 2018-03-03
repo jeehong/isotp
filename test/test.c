@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+
 #include "comm_typedef.h"
 
 #define CLIENT_ADDRESS	0x766
@@ -37,6 +38,8 @@ void main(void)
 	}
 
 	send(&tx);
+
+	pthread_join(rc_task, NULL);
 }
 
 static ERROR_CODE sender_test_send(struct phy_msg_t *msg)
@@ -44,7 +47,7 @@ static ERROR_CODE sender_test_send(struct phy_msg_t *msg)
 	static uint32_t seq = 0UL;
 
 	seq ++;
-	printf("Sender-Tx Seq:%d Len:%d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+	printf("Sder-Tx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 				seq,
 				msg->length,
 				msg->id,
@@ -53,7 +56,10 @@ static ERROR_CODE sender_test_send(struct phy_msg_t *msg)
 				msg->data[6], msg->data[7]);
 	memcpy(&rx.isotp.phy, &tx.isotp.phy, sizeof(tx.isotp.phy));
 	rx.isotp.phy.new_data = TRUE;
-	
+	if(seq == 37)
+	{
+		rx.isotp.phy.new_data = rx.isotp.phy.new_data;
+	}
 	return STATUS_NORMAL;
 }
 
@@ -67,7 +73,7 @@ static ERROR_CODE sender_test_receive(struct phy_msg_t *msg)
 		tx.isotp.phy.new_data = FALSE;
 		err = STATUS_NORMAL;
 		seq ++;
-		printf("Sender-Rx Seq:%d Len:%d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+		printf("Sder-Rx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 					seq,
 					msg->length,
 					msg->id,
@@ -85,7 +91,7 @@ static ERROR_CODE receiver_test_send(struct phy_msg_t *msg)
 
 	seq ++;
 	
-	printf("Receiver-Tx Seq:%d Len:%d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+	printf("Rcer-Tx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 				seq,
 				msg->length,
 				msg->id,
@@ -108,7 +114,7 @@ static ERROR_CODE receiver_test_receive(struct phy_msg_t *msg)
 		rx.isotp.phy.new_data = FALSE;
 		err = STATUS_NORMAL;
 		seq ++;
-		printf("Receiver-Rx Seq:%d Len:%d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+		printf("Rcer-Rx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 					seq,
 					msg->length,
 					msg->id,

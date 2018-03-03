@@ -38,10 +38,27 @@ static ERROR_CODE isotp_receive(struct isotp_msg_t *msg);
 
 void delay_1ms(uint16_t ms1)
 {
+	uint16_t i, j;
+	for(i = 0; i < 1000; i ++)
+	{
+		for(j = 0; j < 1000; j ++)
+		{
+			;
+		}
+	}
 }
 
 void delay_100us(uint16_t us100)
 {
+	uint16_t i, j;
+	
+	for(i = 0; i < 100; i ++)
+	{
+		for(j = 0; j < 1000; j ++)
+		{
+			;
+		}
+	}
 }
 
 uint32_t millis(void)
@@ -265,7 +282,8 @@ static ERROR_CODE rcv_ff(struct Message_t* msg)
 		 * copy the first received data bytes
 		 * Skip 2 bytes PCI, FF must have 6 bytes!
 		 */
-		memcpy(msg->Buffer + msg->buffer_index, data + 2UL, 6UL); 
+		memcpy(msg->Buffer + msg->buffer_index, data + 2UL, 6UL);
+		msg->buffer_index += 6UL;
 		msg->rest -= 6UL; /* Rest length */
 		msg->tp_state = ISOTP_WAIT_DATA;
 		msg->FS = ISOTP_FS_CTS;	/* continue to send */
@@ -314,7 +332,7 @@ static ERROR_CODE rcv_cf(struct Message_t* msg)
 			err = ERR_PARAMETER;
 			break;
 		}
-		msg->buffer_index = 6UL + 7UL * msg->SN;
+		
 		if(msg->rest < 7UL)
 		{
 			/* Last Frame */
@@ -327,6 +345,7 @@ static ERROR_CODE rcv_cf(struct Message_t* msg)
 			memcpy(msg->Buffer + msg->buffer_index, data + 1UL, 7UL);	/* 6 Bytes in FF + 7 */
 			msg->rest -= 7UL; /* Got another 7 Bytes of Data; */
 		}
+		msg->buffer_index += 7UL;
 		msg->SN ++;
 		break;
 	}

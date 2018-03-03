@@ -30,7 +30,7 @@ enum n_pci_type_e
 
 #define FC_CONTENT_SZ 	3 /* flow control content size in byte (FS/BS/STmin) */
 
-#define FC_DEFAULT_BS	10UL
+#define FC_DEFAULT_BS	100UL
 
 /*
  * ISO-15765-2-8.5.3.2
