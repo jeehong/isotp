@@ -17,21 +17,6 @@ typedef enum {
 	ISOTP_ERROR
 } isotp_states_t;
 
-
-
-/* N_PCI type values in bits 7-4 of N_PCI bytes */
-enum n_pci_type_e
-{
-	N_PCI_SF = 0x00,  /* single frame */
-	N_PCI_FF = 0x10,  /* first frame */
-	N_PCI_CF = 0x20,  /* consecutive frame */
-	N_PCI_FC = 0x30,  /* flow control */
-};
-
-#define FC_CONTENT_SZ 	3 /* flow control content size in byte (FS/BS/STmin) */
-
-#define FC_DEFAULT_BS	100UL
-
 /*
  * ISO-15765-2-8.5.3.2
  * FirstFrame DataLength (FF_DL)
@@ -50,12 +35,6 @@ enum ISOTP_FS_e
 	ISOTP_FS_OVFLW = 2UL,	/* overflow */
 };
 
-/* Timeout values */
-#define TIMEOUT_SESSION		(500UL) /* Timeout between successfull send and receive */
-#define TIMEOUT_FC			(250UL) /* Timeout between FF and FC or Block CF and FC */
-#define TIMEOUT_CF			(250UL) /* Timeout between CFs                          */
-#define MAX_FCWAIT_FRAME	(10UL)
-
 struct phy_msg_t
 {
 	uint8_t new_data;
@@ -68,7 +47,8 @@ typedef ERROR_CODE (*isotp_transfer)(struct phy_msg_t *);
 
 struct isotp_msg_t
 {
-	struct phy_msg_t phy;
+	struct phy_msg_t phy_rx;
+	struct phy_msg_t phy_tx;
 	uint32_t N_TA;		/* network target address */
 	uint32_t N_SA;		/* network source address */
 	isotp_transfer phy_send;
@@ -83,9 +63,10 @@ typedef struct Message_t
 	uint16_t SN;		/* consecutive frame serial number */
 
 	enum ISOTP_FS_e FS;	/* Flow control status */
-	uint8_t BS;			/* block size, setting value */
+	uint8_t BS;			/* setting block size, setting value */
+	uint8_t BS_Counter;	/* block size counter, setting value */
 	uint8_t STmin;		/* SeparationTime minimum */
-
+	ERROR_CODE (*fs_set_cb)(struct Message_t* /*msg*/);
 	uint16_t rest;		/* mutilate frame remaining part */
 	uint8_t  fc_wait_frames;
 	uint32_t wait_fc;
@@ -96,9 +77,14 @@ typedef struct Message_t
 	struct isotp_msg_t isotp;	/* isotp data from the bus */
 };
 
-ERROR_CODE isotp_init(struct Message_t *msg, uint32_t sa, uint32_t ta, isotp_transfer send, isotp_transfer receive);
+ERROR_CODE isotp_init(struct Message_t *msg,
+							uint32_t sa,
+							uint32_t ta,
+							ERROR_CODE *fs_set_cb(struct Message_t* /*msg*/),
+							isotp_transfer send, 
+							isotp_transfer receive);
 ERROR_CODE send(struct Message_t* msg);
 ERROR_CODE receive(struct Message_t* msg);
-void print_buffer(uint32_t id, uint8_t *buffer, uint16_t len);
+ERROR_CODE fc_set(struct Message_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t STmin);
 
 #endif
