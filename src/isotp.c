@@ -1,6 +1,13 @@
 #include "isotp.h"
 #include <string.h>
 
+#define time_after(a,b)  \
+((long)(b) - (long)(a) < 0)
+
+#define time_before(a,b) time_after(b,a)
+
+#define time_interval(now,pre) ((long)(now) - (long)(pre)) 
+
 /* N_PCI type values in bits 7-4 of N_PCI bytes */
 enum n_pci_type_e
 {
@@ -50,7 +57,7 @@ enum n_pci_type_e
 
 void delay_1ms(uint16_t ms1);
 void delay_100us(uint16_t us100);
-static uint32_t millis(void);
+static uint32_t systickms(void);
 static ERROR_CODE send_fc(struct Message_t* msg);
 static ERROR_CODE send_sf(struct Message_t* msg);
 static ERROR_CODE send_ff(struct Message_t* msg);
@@ -100,7 +107,7 @@ void delay_100us(uint16_t us100)
  * function: system tick
  * This functionality needs to be reimplemented on your platform.
  */
-uint32_t millis(void)
+uint32_t systickms(void)
 {
 	return 0;
 }
@@ -129,10 +136,11 @@ ERROR_CODE isotp_init(struct Message_t *msg,
 		msg->STmin = 0UL;
 		msg->rest = 0UL;		/* mutilate frame remaining part */
 		msg->fc_wait_frames = 0UL;
-		msg->wait_fc = 0UL;
-		msg->wait_cf = 0UL;
+		msg->N_Bs = systickms();
+		msg->N_Cr = systickms();
 		msg->wait_session = 0UL;
 		msg->buffer_index = 0UL;
+		msg->reply = N_OK;
 		msg->isotp.N_TA = ta;
 		msg->isotp.N_SA = sa;
 		msg->isotp.phy_rx.new_data = FALSE;
@@ -381,24 +389,20 @@ static ERROR_CODE rcv_cf(struct Message_t* msg)
 {
 	ERROR_CODE err = STATUS_NORMAL;
 	uint8_t *data = msg->isotp.phy_rx.data;
-	/*
-	 * Handle Timeout
-	 * If no Frame within 250ms change State to ISOTP_IDLE
-	 */
-	uint32_t delta = millis() - msg->wait_cf;
 
+	msg->N_Bs = systickms();
 	for(;;)
 	{
-		if((delta >= TIMEOUT_FC) && msg->SN != ISOTP_DEFAULT_SN)
+		if(time_after(systickms(), msg->N_Bs + TIMEOUT_FC) && (msg->SN != ISOTP_DEFAULT_SN))
 		{
 			msg->tp_state = ISOTP_IDLE;
 			msg->SN = ISOTP_DEFAULT_SN;
 			msg->rest = 0UL;
 			msg->buffer_index = 0UL;
+			msg->reply = N_TIMEOUT_Bs;
 			err = ERR_TIMEOUT;
 			break;
 		}
-		msg->wait_cf = millis();
 		if (msg->tp_state != ISOTP_WAIT_DATA) 
 		{
 			err = ERR_PARAMETER;
@@ -460,6 +464,11 @@ static ERROR_CODE rcv_fc(struct Message_t* msg)
 			err = ERR_PARAMETER;
 			break;
 		}
+		if(N_PCI_FC != data[0] & 0x0F)
+		{
+			err = ERR_PARAMETER;
+			break;
+		}
 		/* get communication parameters only from the first FC frame */
 		if (msg->tp_state == ISOTP_WAIT_FIRST_FC)
 		{
@@ -480,6 +489,7 @@ static ERROR_CODE rcv_fc(struct Message_t* msg)
 				msg->tp_state = ISOTP_SEND_CF;
 				break;
 			case ISOTP_FS_WAIT:
+				msg->N_Bs = systickms();
 				msg->fc_wait_frames ++;
 				if(msg->fc_wait_frames >= MAX_FCWAIT_FRAME)
 				{
@@ -504,7 +514,6 @@ static ERROR_CODE rcv_fc(struct Message_t* msg)
 
 ERROR_CODE send(struct Message_t* msg)
 {
-	uint32_t delta = 0UL;
 	ERROR_CODE err = STATUS_NORMAL;
 
 	msg->tp_state = ISOTP_SEND;
@@ -529,13 +538,12 @@ ERROR_CODE send(struct Message_t* msg)
 						msg->DL -= 6UL;
 						msg->tp_state = ISOTP_WAIT_FIRST_FC;
 						msg->fc_wait_frames = 0UL;
-						msg->wait_fc = millis();
+						msg->N_Bs = systickms();
 					}
 				}
 				break;
 			case ISOTP_WAIT_FIRST_FC:
-				delta = millis() - msg->wait_fc;
-				if(delta >= TIMEOUT_FC)
+				if(time_after(systickms(), msg->N_Bs + TIMEOUT_FC))
 				{
 					msg->tp_state = ISOTP_IDLE;
 					err = ERR_TIMEOUT;
@@ -589,15 +597,13 @@ ERROR_CODE send(struct Message_t* msg)
 ERROR_CODE receive(struct Message_t* msg)
 {
 	enum n_pci_type_e n_pci_type = N_PCI_SF;
-	uint32_t delta = 0UL;
 	ERROR_CODE err = STATUS_NORMAL;
 
-	msg->wait_session = millis();
+	msg->wait_session = systickms();
 	msg->tp_state = ISOTP_IDLE;
 	while(msg->tp_state != ISOTP_FINISHED && msg->tp_state != ISOTP_ERROR)
 	{
-		delta = millis() - msg->wait_session;
-		if(delta >= TIMEOUT_SESSION)
+		if(time_after(systickms(), msg->wait_session + TIMEOUT_SESSION))
 		{
 			err = ERR_TIMEOUT;
 			break;

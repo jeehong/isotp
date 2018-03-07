@@ -35,6 +35,27 @@ enum ISOTP_FS_e
 	ISOTP_FS_OVFLW = 2UL,	/* overflow */
 };
 
+/* 
+ * Description:
+ * This parameter contains the status relating to the outcome of a service execution. 
+ * If two or more errors are discovered at the same time,
+ * then the network layer entity shall use the parameter value found first
+ * in this list when indicating the error to the higher layers.
+ */
+enum N_Result
+{
+	N_OK = 0,
+	N_TIMEOUT_A,
+	N_TIMEOUT_Bs,
+	N_TIMEOUT_Cr,
+	N_WRONG_SN,
+	N_INVALID_FS,
+	N_UNEXP_PDU,
+	N_WFT_OVRN,
+	N_BUFFER_OVFLW,
+	N_ERROR
+};
+
 struct phy_msg_t
 {
 	uint8_t new_data;
@@ -69,8 +90,9 @@ typedef struct Message_t
 	ERROR_CODE (*fs_set_cb)(struct Message_t* /*msg*/);
 	uint16_t rest;		/* mutilate frame remaining part */
 	uint8_t  fc_wait_frames;
-	uint32_t wait_fc;
-	uint32_t wait_cf;
+	uint32_t N_Bs;
+	uint32_t N_Cr;
+	enum N_Result reply;
 	uint32_t wait_session;
 	uint8_t Buffer[ISOTP_FF_DL];	/* data pool */
 	uint16_t buffer_index;			/* data_pool current index */
