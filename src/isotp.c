@@ -1,13 +1,6 @@
 #include "isotp.h"
 #include <string.h>
 
-#define time_after(a,b)  \
-((long)(b) - (long)(a) < 0)
-
-#define time_before(a,b) time_after(b,a)
-
-#define time_interval(now,pre) ((long)(now) - (long)(pre)) 
-
 /* N_PCI type values in bits 7-4 of N_PCI bytes */
 enum n_pci_type_e
 {
@@ -37,9 +30,16 @@ enum n_pci_type_e
 #define ISOTP_DEFAULT_STmin	(0x7F)
 
 /*
+ * N_Cr timeout
+ * Time until reception of
+ * the next Consecutive
+ * Frame N_PDU
+ */
+#define N_CR_TIMEOUT	1000UL
+/*
  * 0x00 BlockSize (BS)
  * The BS parameter value 0 shall be used to indicate to the sender that no more FC frames shall be sent
- * during the transmission of the segmented message. The sending network layer entity shall send all
+ * during the transmission of the segmented message. The sending network layer entity shall isotp_send all
  * remaining ConsecutiveFrames without any stop for further FC frames from the receiving network layer
  * entity.
  * 0x01-0xFF BlockSize (BS)
@@ -50,7 +50,7 @@ enum n_pci_type_e
 #define FC_DEFAULT_BS	0UL
 
 /* Timeout values */
-#define TIMEOUT_SESSION		(500UL) /* Timeout between successfull send and receive */
+#define TIMEOUT_SESSION		(500UL) /* Timeout between successfull send and isotp_receive */
 #define TIMEOUT_FC			(250UL) /* Timeout between FF and FC or Block CF and FC */
 #define TIMEOUT_CF			(250UL) /* Timeout between CFs                          */
 #define MAX_FCWAIT_FRAME	(10UL)
@@ -58,64 +58,23 @@ enum n_pci_type_e
 void delay_1ms(uint16_t ms1);
 void delay_100us(uint16_t us100);
 static uint32_t systickms(void);
-static ERROR_CODE send_fc(struct Message_t* msg);
-static ERROR_CODE send_sf(struct Message_t* msg);
-static ERROR_CODE send_ff(struct Message_t* msg);
-static ERROR_CODE send_cf(struct Message_t* msg);
-static ERROR_CODE rcv_sf(struct Message_t* msg);
-static ERROR_CODE rcv_ff(struct Message_t* msg);
-static ERROR_CODE rcv_cf(struct Message_t* msg);
-static ERROR_CODE rcv_fc(struct Message_t* msg);
+static void send_init(struct isotp_t* msg);
+static ERROR_CODE send_fc(struct isotp_t* msg);
+static ERROR_CODE send_sf(struct isotp_t* msg);
+static ERROR_CODE send_ff(struct isotp_t* msg);
+static ERROR_CODE send_cf(struct isotp_t* msg);
+static ERROR_CODE rcv_sf(struct isotp_t* msg);
+static ERROR_CODE rcv_ff(struct isotp_t* msg);
+static ERROR_CODE rcv_cf(struct isotp_t* msg);
+static ERROR_CODE rcv_fc(struct isotp_t* msg);
 static void fc_delay(uint8_t STmin);
-static ERROR_CODE isotp_send(struct isotp_msg_t *msg);
-static ERROR_CODE isotp_receive(struct isotp_msg_t *msg);
+static ERROR_CODE port_send(struct isotp_msg_t *msg);
+static ERROR_CODE port_receive(struct isotp_msg_t *msg);
 
-/* 
- * function: delay 1ms
- * This functionality needs to be reimplemented on your platform.
- */
-void delay_1ms(uint16_t ms1)
-{
-	uint16_t i, j;
-	for(i = 0; i < 1000; i ++)
-	{
-		for(j = 0; j < 1000; j ++)
-		{
-			;
-		}
-	}
-}
-
-/* 
- * function: delay 100us
- * This functionality needs to be reimplemented on your platform.
- */
-void delay_100us(uint16_t us100)
-{
-	uint16_t i, j;
-	
-	for(i = 0; i < 100; i ++)
-	{
-		for(j = 0; j < 1000; j ++)
-		{
-			;
-		}
-	}
-}
-
-/* 
- * function: system tick
- * This functionality needs to be reimplemented on your platform.
- */
-uint32_t systickms(void)
-{
-	return 0;
-}
-
-ERROR_CODE isotp_init(struct Message_t *msg,
+ERROR_CODE isotp_init(struct isotp_t *msg,
 							uint32_t sa,
 							uint32_t ta,
-							ERROR_CODE *fs_set_cb(struct Message_t* /*msg*/),
+							ERROR_CODE (*fs_set_cb)(struct isotp_t* /*msg*/),
 							isotp_transfer send, 
 							isotp_transfer receive)
 {
@@ -127,23 +86,11 @@ ERROR_CODE isotp_init(struct Message_t *msg,
 	}
 	else
 	{
-		msg->DL = 0UL;			/* data length */
+		send_init(msg);
 		msg->tp_state = ISOTP_IDLE;
-		msg->SN = ISOTP_DEFAULT_SN;		/* consecutive frame serial number */
-		msg->FS = ISOTP_FS_CTS;	/* Flow control status */
-		msg->BS = FC_DEFAULT_BS;		/* block size, setting value */
-		msg->BS_Counter = FC_DEFAULT_BS;	/* block size, setting value */
-		msg->STmin = 0UL;
-		msg->rest = 0UL;		/* mutilate frame remaining part */
-		msg->fc_wait_frames = 0UL;
-		msg->N_Bs = systickms();
-		msg->N_Cr = systickms();
-		msg->wait_session = 0UL;
-		msg->buffer_index = 0UL;
-		msg->reply = N_OK;
+		msg->DL = 0UL;			/* data length */
 		msg->isotp.N_TA = ta;
 		msg->isotp.N_SA = sa;
-		msg->isotp.phy_rx.new_data = FALSE;
 		msg->isotp.phy_send = send;
 		msg->isotp.phy_receive = receive;
 		msg->fs_set_cb = fs_set_cb;
@@ -152,7 +99,23 @@ ERROR_CODE isotp_init(struct Message_t *msg,
 	return err;
 }
 
-ERROR_CODE fc_set(struct Message_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t STmin)
+static void send_init(struct isotp_t* msg)
+{
+	msg->SN = ISOTP_DEFAULT_SN; 	/* consecutive frame serial number */
+	msg->FS = ISOTP_FS_CTS; /* Flow control status */
+	msg->BS = FC_DEFAULT_BS;		/* block size, setting value */
+	msg->BS_Counter = FC_DEFAULT_BS;	/* block size, setting value */
+	msg->STmin = 0UL;
+	msg->rest = 0UL;		/* mutilate frame remaining part */
+	timer_delete(&msg->N_Bs);
+	timer_delete(&msg->N_Cr);
+	timer_delete(&msg->wait_session);
+	msg->buffer_index = 0UL;
+	msg->reply = N_OK;
+	msg->isotp.phy_rx.new_data = FALSE;
+}
+
+ERROR_CODE fc_set(struct isotp_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t STmin)
 {
 	ERROR_CODE err = STATUS_NORMAL;
 	
@@ -171,30 +134,7 @@ ERROR_CODE fc_set(struct Message_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t
 	return err;
 }
 
-#if 0
-void print_buffer(uint32_t id, uint8_t *buffer, uint16_t len)
-{
-	uint16_t i = 0;
-
-	Serial.print(F("Buffer: "));
-	Serial.print(id, HEX); 
-	Serial.print(F(" ["));
-	Serial.print(len); 
-	Serial.print(F("] "));
-	for(i = 0; i < len; i++)
-	{
-		if(buffer[i] < 0x10)
-		{
-			Serial.print(F("0"));
-		}
-		Serial.print(buffer[i], HEX);
-		Serial.print(F(" "));
-	}
-	Serial.println();
-}
-#endif
-
-static ERROR_CODE isotp_send(struct isotp_msg_t *msg)
+static ERROR_CODE port_send(struct isotp_msg_t *msg)
 {
 	msg->phy_tx.new_data = TRUE;
 	msg->phy_tx.id = msg->N_TA;
@@ -202,7 +142,7 @@ static ERROR_CODE isotp_send(struct isotp_msg_t *msg)
 	return msg->phy_send(&msg->phy_tx);
 }
 
-static ERROR_CODE isotp_receive(struct isotp_msg_t *msg)
+static ERROR_CODE port_receive(struct isotp_msg_t *msg)
 {
 	ERROR_CODE err = ERR_EMPTY;
 
@@ -234,10 +174,14 @@ static ERROR_CODE isotp_receive(struct isotp_msg_t *msg)
 /*
  * Send a Flow Control Frame
  */
-static ERROR_CODE send_fc(struct Message_t *msg)
+static ERROR_CODE send_fc(struct isotp_t *msg)
 {
 	uint8_t *data = msg->isotp.phy_tx.data;
 
+	if(msg->FS == ISOTP_FS_CTS)
+	{
+		timer_add(&msg->N_Cr);
+	}
 	memset(data, 0UL, 8UL);
 	/* FC message high nibble = 0x3 , low nibble = FC Status */
 	data[0] = (N_PCI_FC | msg->FS);
@@ -250,10 +194,10 @@ static ERROR_CODE send_fc(struct Message_t *msg)
 	}
 	data[2] = msg->STmin;
 
-	return isotp_send(&msg->isotp);
+	return port_send(&msg->isotp);
 }
 
-static ERROR_CODE send_sf(struct Message_t *msg) //Send SF Message
+static ERROR_CODE send_sf(struct isotp_t *msg) //Send SF Message
 {
 	uint8_t *data = msg->isotp.phy_tx.data;
 
@@ -262,13 +206,13 @@ static ERROR_CODE send_sf(struct Message_t *msg) //Send SF Message
 	data[0] = (N_PCI_SF | msg->DL);
 	memcpy(data + 1UL, msg->Buffer + msg->buffer_index, msg->DL);
 
-	return isotp_send(&msg->isotp);
+	return port_send(&msg->isotp);
 }
 
 /*
  * Send a First Frame
  */
-static ERROR_CODE send_ff(struct Message_t *msg) 
+static ERROR_CODE send_ff(struct isotp_t *msg) 
 {
 	uint8_t *data = msg->isotp.phy_tx.data;
 
@@ -281,13 +225,13 @@ static ERROR_CODE send_ff(struct Message_t *msg)
 	memcpy(data + 2UL, msg->Buffer + msg->buffer_index, 6UL);
 	
 	/* First Frame has full length */
-	return isotp_send(&msg->isotp);
+	return port_send(&msg->isotp);
 }
 
 /*
  * Send a Consecutive Frame
  */
-static ERROR_CODE send_cf(struct Message_t *msg)
+static ERROR_CODE send_cf(struct isotp_t *msg)
 {
 	uint8_t *data = msg->isotp.phy_tx.data;
 	uint16_t len = 7UL;
@@ -305,7 +249,7 @@ static ERROR_CODE send_cf(struct Message_t *msg)
 	/* Skip 1 Byte PCI */
 	memcpy(data + 1, msg->Buffer + msg->buffer_index, len);
 
-	return isotp_send(&msg->isotp);
+	return port_send(&msg->isotp);
 }
 
 static void fc_delay(uint8_t STmin)
@@ -333,7 +277,7 @@ static void fc_delay(uint8_t STmin)
 /*
  * Receive a Single Frame
  */
-static ERROR_CODE rcv_sf(struct Message_t* msg)
+static ERROR_CODE rcv_sf(struct isotp_t* msg)
 {
 	/* get the SF_DL from the N_PCI byte */
 	msg->DL = msg->isotp.phy_rx.data[0] & 0x0F;
@@ -349,7 +293,7 @@ static ERROR_CODE rcv_sf(struct Message_t* msg)
 /*
  * Receive a First Frame
  */
-static ERROR_CODE rcv_ff(struct Message_t* msg)
+static ERROR_CODE rcv_ff(struct isotp_t* msg)
 {
 	ERROR_CODE err = STATUS_NORMAL;
 	uint8_t *data = msg->isotp.phy_rx.data;
@@ -385,15 +329,15 @@ static ERROR_CODE rcv_ff(struct Message_t* msg)
 /*
  * Receive a Consecutive Frame
  */
-static ERROR_CODE rcv_cf(struct Message_t* msg)
+static ERROR_CODE rcv_cf(struct isotp_t* msg)
 {
 	ERROR_CODE err = STATUS_NORMAL;
 	uint8_t *data = msg->isotp.phy_rx.data;
 
-	msg->N_Bs = systickms();
+	timer_refresh(&msg->N_Bs);
 	for(;;)
 	{
-		if(time_after(systickms(), msg->N_Bs + TIMEOUT_FC) && (msg->SN != ISOTP_DEFAULT_SN))
+		if(timer_overflow(&msg->N_Bs, TIMEOUT_FC) && (msg->SN != ISOTP_DEFAULT_SN))
 		{
 			msg->tp_state = ISOTP_IDLE;
 			msg->SN = ISOTP_DEFAULT_SN;
@@ -412,6 +356,7 @@ static ERROR_CODE rcv_cf(struct Message_t* msg)
 		{
 			msg->tp_state = ISOTP_IDLE;
 			msg->SN = ISOTP_DEFAULT_SN;
+			msg->reply = N_WRONG_SN;
 			err = ERR_PARAMETER;
 			break;
 		}
@@ -451,7 +396,7 @@ static ERROR_CODE rcv_cf(struct Message_t* msg)
 /*
  * Receive a Flow Control Frame
  */
-static ERROR_CODE rcv_fc(struct Message_t* msg)
+static ERROR_CODE rcv_fc(struct isotp_t* msg)
 {
 	ERROR_CODE err = STATUS_NORMAL;
 	uint8_t *data = msg->isotp.phy_rx.data;
@@ -464,7 +409,7 @@ static ERROR_CODE rcv_fc(struct Message_t* msg)
 			err = ERR_PARAMETER;
 			break;
 		}
-		if(N_PCI_FC != data[0] & 0x0F)
+		if(N_PCI_FC != (data[0] & 0xF0))
 		{
 			err = ERR_PARAMETER;
 			break;
@@ -487,23 +432,19 @@ static ERROR_CODE rcv_fc(struct Message_t* msg)
 		{
 			case ISOTP_FS_CTS:
 				msg->tp_state = ISOTP_SEND_CF;
+				timer_delete(&msg->N_Bs);
 				break;
 			case ISOTP_FS_WAIT:
-				msg->N_Bs = systickms();
-				msg->fc_wait_frames ++;
-				if(msg->fc_wait_frames >= MAX_FCWAIT_FRAME)
-				{
-					msg->fc_wait_frames = 0UL;
-					msg->tp_state = ISOTP_IDLE;
-					err = ERR_TIMEOUT;
-				}
+				timer_refresh(&msg->N_Bs);
 				break;
 			case ISOTP_FS_OVFLW:
 				err = ERR_FULL;
+				msg->reply = N_BUFFER_OVFLW;
 				break;
 			default:
 				msg->tp_state = ISOTP_IDLE;
 				err = ERR_PARAMETER;
+				msg->reply = N_INVALID_FS;
 				break;
 		}
 		break;
@@ -512,10 +453,11 @@ static ERROR_CODE rcv_fc(struct Message_t* msg)
 	return err;
 }
 
-ERROR_CODE send(struct Message_t* msg)
+enum N_Result isotp_send(struct isotp_t* msg)
 {
 	ERROR_CODE err = STATUS_NORMAL;
 
+	send_init(msg);
 	msg->tp_state = ISOTP_SEND;
 	while(msg->tp_state != ISOTP_IDLE && msg->tp_state != ISOTP_ERROR)
 	{
@@ -534,29 +476,29 @@ ERROR_CODE send(struct Message_t* msg)
 					err = send_ff(msg);
 					if(err == STATUS_NORMAL) // FF complete
 					{
+						timer_add(&msg->N_Bs);
 						msg->buffer_index += 6UL;
 						msg->DL -= 6UL;
 						msg->tp_state = ISOTP_WAIT_FIRST_FC;
-						msg->fc_wait_frames = 0UL;
-						msg->N_Bs = systickms();
 					}
 				}
 				break;
 			case ISOTP_WAIT_FIRST_FC:
-				if(time_after(systickms(), msg->N_Bs + TIMEOUT_FC))
+				if(timer_overflow(&msg->N_Bs, TIMEOUT_FC))
 				{
 					msg->tp_state = ISOTP_IDLE;
 					err = ERR_TIMEOUT;
+					timer_delete(&msg->N_Bs);
 				}
 				/* break; */
 			case ISOTP_WAIT_FC:
-				if(isotp_receive(&msg->isotp) == STATUS_NORMAL)
+				if(port_receive(&msg->isotp) == STATUS_NORMAL)
 				{
 					err = rcv_fc(msg);
-				}			
+				}
 				break;
 			case ISOTP_SEND_CF:
-				while(msg->tp_state == ISOTP_SEND_CF) 
+				while(msg->tp_state == ISOTP_SEND_CF)
 				{
 					fc_delay(msg->STmin);
 					err = send_cf(msg);
@@ -566,6 +508,7 @@ ERROR_CODE send(struct Message_t* msg)
 						{
 							if((--msg->BS_Counter) == 0UL)
 							{
+								timer_add(&msg->N_Bs);
 								msg->BS_Counter = msg->BS;
 								msg->tp_state = ISOTP_WAIT_FC;
 							}
@@ -579,7 +522,6 @@ ERROR_CODE send(struct Message_t* msg)
 						else
 						{
 							msg->buffer_index += msg->DL;
-							msg->DL = 0UL;
 							msg->tp_state = ISOTP_IDLE;
 						}
 					}
@@ -591,25 +533,34 @@ ERROR_CODE send(struct Message_t* msg)
 		}
 	}
 
-	return err;
+	return msg->reply;
 }
 
-ERROR_CODE receive(struct Message_t* msg)
+enum N_Result isotp_receive(struct isotp_t* msg)
 {
 	enum n_pci_type_e n_pci_type = N_PCI_SF;
 	ERROR_CODE err = STATUS_NORMAL;
 
-	msg->wait_session = systickms();
+	timer_add(&msg->wait_session);
+	msg->reply = N_OK;
 	msg->tp_state = ISOTP_IDLE;
 	while(msg->tp_state != ISOTP_FINISHED && msg->tp_state != ISOTP_ERROR)
 	{
-		if(time_after(systickms(), msg->wait_session + TIMEOUT_SESSION))
+		if(timer_overflow(&msg->wait_session, TIMEOUT_SESSION))
 		{
 			err = ERR_TIMEOUT;
+			msg->reply = N_OK;
 			break;
 		}
-		if(isotp_receive(&msg->isotp) == STATUS_NORMAL)
+		if(timer_overflow(&msg->N_Cr, N_CR_TIMEOUT))
 		{
+			msg->reply = N_TIMEOUT_Cr;
+			err = ERR_TIMEOUT;
+			msg->tp_state = ISOTP_FINISHED;
+		}
+		if(port_receive(&msg->isotp) == STATUS_NORMAL)
+		{
+			timer_refresh(&msg->wait_session);
 			n_pci_type = (enum n_pci_type_e)(msg->isotp.phy_rx.data[0] & 0xF0);
 			switch (n_pci_type)
 			{
@@ -627,10 +578,11 @@ ERROR_CODE receive(struct Message_t* msg)
 					break;
 				default:
 					err = ERR_PARAMETER;
+					msg->reply = N_ERROR;
 					break;
 			}
 		}
 	}
 
-	return err;
+	return msg->reply;
 }

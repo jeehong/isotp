@@ -1,7 +1,8 @@
 #ifndef __ISOTP_H__
 #define __ISOTP_H__
 
-#include <comm_typedef.h>
+#include "comm_typedef.h"
+#include "timer.h"
 
 //#define ISO_TP_DEBUG
 
@@ -30,7 +31,7 @@ typedef enum {
 /* Flow Status given in FC frame */
 enum ISOTP_FS_e
 {
-	ISOTP_FS_CTS = 0UL,		/* clear to send */
+	ISOTP_FS_CTS = 0UL,		/* clear to isotp_send */
 	ISOTP_FS_WAIT = 1UL,	/* wait */
 	ISOTP_FS_OVFLW = 2UL,	/* overflow */
 };
@@ -76,7 +77,7 @@ struct isotp_msg_t
 	isotp_transfer phy_receive;
 };
 
-typedef struct Message_t
+typedef struct isotp_t
 {
 	uint16_t DL;		/* data length */
 	isotp_states_t tp_state;
@@ -87,26 +88,25 @@ typedef struct Message_t
 	uint8_t BS;			/* setting block size, setting value */
 	uint8_t BS_Counter;	/* block size counter, setting value */
 	uint8_t STmin;		/* SeparationTime minimum */
-	ERROR_CODE (*fs_set_cb)(struct Message_t* /*msg*/);
+	ERROR_CODE (*fs_set_cb)(struct isotp_t* /*msg*/);
 	uint16_t rest;		/* mutilate frame remaining part */
-	uint8_t  fc_wait_frames;
-	uint32_t N_Bs;
-	uint32_t N_Cr;
+	struct timer_t N_Bs;
+	struct timer_t N_Cr;
+	struct timer_t wait_session;
 	enum N_Result reply;
-	uint32_t wait_session;
 	uint8_t Buffer[ISOTP_FF_DL];	/* data pool */
 	uint16_t buffer_index;			/* data_pool current index */
 	struct isotp_msg_t isotp;	/* isotp data from the bus */
 };
 
-ERROR_CODE isotp_init(struct Message_t *msg,
+ERROR_CODE isotp_init(struct isotp_t *msg,
 							uint32_t sa,
 							uint32_t ta,
-							ERROR_CODE *fs_set_cb(struct Message_t* /*msg*/),
-							isotp_transfer send, 
-							isotp_transfer receive);
-ERROR_CODE send(struct Message_t* msg);
-ERROR_CODE receive(struct Message_t* msg);
-ERROR_CODE fc_set(struct Message_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t STmin);
+							ERROR_CODE (*fs_set_cb)(struct isotp_t* /*msg*/),
+							isotp_transfer isotp_send, 
+							isotp_transfer isotp_receive);
+enum N_Result isotp_send(struct isotp_t* msg);
+enum N_Result isotp_receive(struct isotp_t* msg);
+ERROR_CODE fc_set(struct isotp_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t STmin);
 
 #endif

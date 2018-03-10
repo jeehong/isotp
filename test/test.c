@@ -1,5 +1,6 @@
 #include "isotp.h"
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <pthread.h>
 
@@ -12,16 +13,33 @@ static ERROR_CODE sender_test_send(struct phy_msg_t *msg);
 static ERROR_CODE sender_test_receive(struct phy_msg_t *msg);
 static ERROR_CODE receiver_test_send(struct phy_msg_t *msg);
 static ERROR_CODE receiver_test_receive(struct phy_msg_t *msg);
-static ERROR_CODE receiver_set_FS(struct Message_t* msg);
+static ERROR_CODE receiver_set_FS(struct isotp_t* msg);
+static void debug_out(const char *fmt, ...);
 
 
-static struct Message_t sender, receiver;
+static struct isotp_t sender, receiver;
+
+static void debug_out(const char *fmt, ...)
+{
+	va_list vp;
+	static uint8_t is_busy = FALSE;
+
+	while(is_busy == TRUE)
+	{
+		;
+	}
+	is_busy = TRUE;
+    va_start(vp, fmt);	/* 使args指向可变参数的第一个参数 */
+    vprintf(fmt, vp);	/* 必须用vprintf等带V的  */
+    va_end(vp);			/* 结束可变参数的获取  */
+	is_busy = FALSE;
+}
 
 void *rx_thread(void *arg)
 {
 	for(;;)
 	{
-		receive(&receiver);
+		isotp_receive(&receiver);
 	}
 	return NULL;
 }
@@ -33,12 +51,12 @@ void main(void)
 
 	/* 
 	 * initialize sender parameters
-	 * sender: send object
+	 * sender: isotp_send object
 	 * CLIENT_ADDRESS: local address
 	 * SERVER_ADDRESS: remote address
 	 * NULL: don't need to set this parameter,because it is suitable for receiver.
-	 * sender_test_send: send function of the sender at physical layer
-	 * sender_test_receive: receive function of the sender at physical layer
+	 * sender_test_send: isotp_send function of the sender at physical layer
+	 * sender_test_receive: isotp_receive function of the sender at physical layer
 	 */
 	isotp_init(&sender, CLIENT_ADDRESS, SERVER_ADDRESS, NULL, sender_test_send, sender_test_receive);
 	/* 
@@ -47,8 +65,8 @@ void main(void)
 	 * CLIENT_ADDRESS: remote address
 	 * SERVER_ADDRESS: local address
 	 * receiver_set_FS: Consecutive frame status control
-	 * receiver_test_send: send function of the receiver at physical layer
-	 * receiver_test_receive: receive function of the receiver at physical layer
+	 * receiver_test_send: isotp_send function of the receiver at physical layer
+	 * receiver_test_receive: isotp_receive function of the receiver at physical layer
 	 */
 	isotp_init(&receiver, SERVER_ADDRESS, CLIENT_ADDRESS, receiver_set_FS, receiver_test_send, receiver_test_receive);
 	/*
@@ -59,25 +77,29 @@ void main(void)
 	 * 10UL: STmin
 	 */
 	fc_set(&receiver, ISOTP_FS_CTS, 1UL, 10UL);
-	
+
+	/* create isotp_receive service */
 	pthread_create(&rc_task, /*(const pthread_attr_t *)*/NULL, rx_thread, NULL);
 
+	/* Test 1,single frame */
 	sender.DL = 5UL;
-	printf("Single Frame test,DL:%d\r\n", sender.DL);
+	debug_out("Single Frame test,DL:%d\r\n", sender.DL);
 	for(index = 0; index < sender.DL; index ++)
 	{
 		sender.Buffer[index] = (uint8_t)6UL;
 	}
-	send(&sender);
+	isotp_send(&sender);
 
+	/* Test 2,consecutive frame */
 	sender.DL = 256UL;
-	printf("Consecutive Frame test,DL:%d\r\n", sender.DL);
+	debug_out("Consecutive Frame test,DL:%d\r\n", sender.DL);
 	for(index = 0; index < sender.DL; index ++)
 	{
-		sender.Buffer[index] = (uint8_t)9UL;
+		sender.Buffer[index] = (uint8_t)index;
 	}
-	send(&sender);
-	/* waitting for ending of the receive task */
+	isotp_send(&sender);
+	
+	/* waitting for ending of the isotp_receive task */
 	pthread_join(rc_task, /*(void **)*/NULL);
 }
 
@@ -89,7 +111,7 @@ static ERROR_CODE sender_test_send(struct phy_msg_t *msg)
 	{
 		msg->new_data = FALSE;
 		seq ++;
-		printf("Sder-Tx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+		debug_out("Sder-Tx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 					seq,
 					msg->length,
 					msg->id,
@@ -112,7 +134,7 @@ static ERROR_CODE sender_test_receive(struct phy_msg_t *msg)
 		msg->new_data = FALSE;
 		err = STATUS_NORMAL;
 		seq ++;
-		printf("Sder-Rx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+		debug_out("Sder-Rx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 					seq,
 					msg->length,
 					msg->id,
@@ -133,7 +155,7 @@ static ERROR_CODE receiver_test_send(struct phy_msg_t *msg)
 		msg->new_data = FALSE;
 		seq ++;
 		
-		printf("Rcer-Tx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+		debug_out("Rcer-Tx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 					seq,
 					msg->length,
 					msg->id,
@@ -156,7 +178,7 @@ static ERROR_CODE receiver_test_receive(struct phy_msg_t *msg)
 		msg->new_data = FALSE;
 		err = STATUS_NORMAL;
 		seq ++;
-		printf("Rcer-Rx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+		debug_out("Rcer-Rx Seq:%04d Len:%02d Id:0x%04X Data:%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
 					seq,
 					msg->length,
 					msg->id,
@@ -167,10 +189,10 @@ static ERROR_CODE receiver_test_receive(struct phy_msg_t *msg)
 	return err;
 }
 
-static ERROR_CODE receiver_set_FS(struct Message_t* msg)
+static ERROR_CODE receiver_set_FS(struct isotp_t* msg)
 {
 	msg->FS = ISOTP_FS_CTS;
-	printf("Rcer-FC-reply FS:%d BS:%d STmin:%d\r\n", msg->FS, msg->BS, msg->STmin);
+	debug_out("Rcer-FC-reply FS:%d BS:%d STmin:%d\r\n", msg->FS, msg->BS, msg->STmin);
 	return STATUS_NORMAL;
 }
 
