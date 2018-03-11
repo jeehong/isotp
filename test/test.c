@@ -24,14 +24,14 @@ static void debug_out(const char *fmt, ...)
 	va_list vp;
 	static uint8_t is_busy = FALSE;
 
-	while(is_busy == TRUE)
+	while(is_busy == TRUE)	/* waitting for the mutex unlocked */
 	{
 		;
 	}
 	is_busy = TRUE;
-    va_start(vp, fmt);	/* 使args指向可变参数的第一个参数 */
-    vprintf(fmt, vp);	/* 必须用vprintf等带V的  */
-    va_end(vp);			/* 结束可变参数的获取  */
+    va_start(vp, fmt);
+    vprintf(fmt, vp);
+    va_end(vp);
 	is_busy = FALSE;
 }
 
@@ -91,7 +91,7 @@ void main(void)
 	isotp_send(&sender);
 
 	/* Test 2,consecutive frame */
-	sender.DL = 256UL;
+	sender.DL = 64UL;
 	debug_out("Consecutive Frame test,DL:%d\r\n", sender.DL);
 	for(index = 0; index < sender.DL; index ++)
 	{

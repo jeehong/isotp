@@ -4,7 +4,6 @@
 #include "comm_typedef.h"
 #include "timer.h"
 
-//#define ISO_TP_DEBUG
 
 typedef enum {
 	ISOTP_IDLE = 0,
