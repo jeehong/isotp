@@ -68,8 +68,8 @@ static ERROR_CODE rcv_ff(struct isotp_t* msg);
 static ERROR_CODE rcv_cf(struct isotp_t* msg);
 static ERROR_CODE rcv_fc(struct isotp_t* msg);
 static void fc_delay(uint8_t STmin);
-static ERROR_CODE port_send(struct isotp_msg_t *msg);
-static ERROR_CODE port_receive(struct isotp_msg_t *msg);
+static ERROR_CODE send_port(struct isotp_msg_t *msg);
+static ERROR_CODE receive_port(struct isotp_msg_t *msg);
 
 ERROR_CODE isotp_init(struct isotp_t *msg,
 							uint32_t sa,
@@ -109,7 +109,6 @@ static void send_init(struct isotp_t* msg)
 	msg->rest = 0UL;		/* mutilate frame remaining part */
 	timer_delete(&msg->N_Bs);
 	timer_delete(&msg->N_Cr);
-	timer_delete(&msg->wait_session);
 	msg->buffer_index = 0UL;
 	msg->reply = N_OK;
 	msg->isotp.phy_rx.new_data = FALSE;
@@ -134,7 +133,7 @@ ERROR_CODE fc_set(struct isotp_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t S
 	return err;
 }
 
-static ERROR_CODE port_send(struct isotp_msg_t *msg)
+static ERROR_CODE send_port(struct isotp_msg_t *msg)
 {
 	msg->phy_tx.new_data = TRUE;
 	msg->phy_tx.id = msg->N_TA;
@@ -142,22 +141,25 @@ static ERROR_CODE port_send(struct isotp_msg_t *msg)
 	return msg->phy_send(&msg->phy_tx);
 }
 
-static ERROR_CODE port_receive(struct isotp_msg_t *msg)
+static ERROR_CODE receive_port(struct isotp_msg_t *msg)
 {
 	ERROR_CODE err = ERR_EMPTY;
 
 	for(;;)
 	{
-		if(msg->phy_receive(&msg->phy_rx) != STATUS_NORMAL)
+		err = msg->phy_receive(&msg->phy_rx);
+		if(err != STATUS_NORMAL)
 		{
 			break;
 		}
 		if(msg->phy_rx.id != msg->N_SA)
 		{
+			err = ERR_NOT_FOUND;
 			break;
 		}
 		if(msg->phy_rx.length == 0)
 		{
+			err = ERR_EMPTY;
 			break;
 		}
 		if(msg->phy_rx.length > 8UL)
@@ -194,7 +196,7 @@ static ERROR_CODE send_fc(struct isotp_t *msg)
 	}
 	data[2] = msg->STmin;
 
-	return port_send(&msg->isotp);
+	return send_port(&msg->isotp);
 }
 
 static ERROR_CODE send_sf(struct isotp_t *msg) //Send SF Message
@@ -206,7 +208,7 @@ static ERROR_CODE send_sf(struct isotp_t *msg) //Send SF Message
 	data[0] = (N_PCI_SF | msg->DL);
 	memcpy(data + 1UL, msg->Buffer + msg->buffer_index, msg->DL);
 
-	return port_send(&msg->isotp);
+	return send_port(&msg->isotp);
 }
 
 /*
@@ -225,7 +227,7 @@ static ERROR_CODE send_ff(struct isotp_t *msg)
 	memcpy(data + 2UL, msg->Buffer + msg->buffer_index, 6UL);
 	
 	/* First Frame has full length */
-	return port_send(&msg->isotp);
+	return send_port(&msg->isotp);
 }
 
 /*
@@ -249,7 +251,7 @@ static ERROR_CODE send_cf(struct isotp_t *msg)
 	/* Skip 1 Byte PCI */
 	memcpy(data + 1, msg->Buffer + msg->buffer_index, len);
 
-	return port_send(&msg->isotp);
+	return send_port(&msg->isotp);
 }
 
 static void fc_delay(uint8_t STmin)
@@ -492,7 +494,7 @@ enum N_Result isotp_send(struct isotp_t* msg)
 				}
 				/* break; */
 			case ISOTP_WAIT_FC:
-				if(port_receive(&msg->isotp) == STATUS_NORMAL)
+				if(receive_port(&msg->isotp) == STATUS_NORMAL)
 				{
 					err = rcv_fc(msg);
 				}
@@ -541,26 +543,18 @@ enum N_Result isotp_receive(struct isotp_t* msg)
 	enum n_pci_type_e n_pci_type = N_PCI_SF;
 	ERROR_CODE err = STATUS_NORMAL;
 
-	timer_add(&msg->wait_session);
 	msg->reply = N_OK;
 	msg->tp_state = ISOTP_IDLE;
 	while(msg->tp_state != ISOTP_FINISHED && msg->tp_state != ISOTP_ERROR)
 	{
-		if(timer_overflow(&msg->wait_session, TIMEOUT_SESSION))
-		{
-			err = ERR_TIMEOUT;
-			msg->reply = N_OK;
-			break;
-		}
 		if(timer_overflow(&msg->N_Cr, N_CR_TIMEOUT))
 		{
 			msg->reply = N_TIMEOUT_Cr;
 			err = ERR_TIMEOUT;
 			msg->tp_state = ISOTP_FINISHED;
 		}
-		if(port_receive(&msg->isotp) == STATUS_NORMAL)
+		if(receive_port(&msg->isotp) == STATUS_NORMAL)
 		{
-			timer_refresh(&msg->wait_session);
 			n_pci_type = (enum n_pci_type_e)(msg->isotp.phy_rx.data[0] & 0xF0);
 			switch (n_pci_type)
 			{

@@ -91,7 +91,6 @@ typedef struct isotp_t
 	uint16_t rest;		/* mutilate frame remaining part */
 	struct timer_t N_Bs;
 	struct timer_t N_Cr;
-	struct timer_t wait_session;
 	enum N_Result reply;
 	uint8_t Buffer[ISOTP_FF_DL];	/* data pool */
 	uint16_t buffer_index;			/* data_pool current index */
