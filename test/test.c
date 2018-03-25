@@ -29,9 +29,9 @@ static void debug_out(const char *fmt, ...)
 		;
 	}
 	is_busy = TRUE;
-    va_start(vp, fmt);
-    vprintf(fmt, vp);
-    va_end(vp);
+	va_start(vp, fmt);
+	vprintf(fmt, vp);
+	va_end(vp);
 	is_busy = FALSE;
 }
 
@@ -91,7 +91,7 @@ void main(void)
 	isotp_send(&sender);
 
 	/* Test 2,consecutive frame */
-	sender.DL = 64UL;
+	sender.DL = 256UL;
 	debug_out("Consecutive Frame test,DL:%d\r\n", sender.DL);
 	for(index = 0; index < sender.DL; index ++)
 	{

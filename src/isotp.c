@@ -184,6 +184,10 @@ static ERROR_CODE send_fc(struct isotp_t *msg)
 	{
 		timer_add(&msg->N_Cr);
 	}
+	else
+	{
+		timer_delete(&msg->N_Cr);
+	}
 	memset(data, 0UL, 8UL);
 	/* FC message high nibble = 0x3 , low nibble = FC Status */
 	data[0] = (N_PCI_FC | msg->FS);
@@ -337,6 +341,7 @@ static ERROR_CODE rcv_cf(struct isotp_t* msg)
 	uint8_t *data = msg->isotp.phy_rx.data;
 
 	timer_refresh(&msg->N_Bs);
+	timer_refresh(&msg->N_Cr);
 	for(;;)
 	{
 		if(timer_overflow(&msg->N_Bs, TIMEOUT_FC) && (msg->SN != ISOTP_DEFAULT_SN))
@@ -547,12 +552,6 @@ enum N_Result isotp_receive(struct isotp_t* msg)
 	msg->tp_state = ISOTP_IDLE;
 	while(msg->tp_state != ISOTP_FINISHED && msg->tp_state != ISOTP_ERROR)
 	{
-		if(timer_overflow(&msg->N_Cr, N_CR_TIMEOUT))
-		{
-			msg->reply = N_TIMEOUT_Cr;
-			err = ERR_TIMEOUT;
-			msg->tp_state = ISOTP_FINISHED;
-		}
 		if(receive_port(&msg->isotp) == STATUS_NORMAL)
 		{
 			n_pci_type = (enum n_pci_type_e)(msg->isotp.phy_rx.data[0] & 0xF0);
@@ -575,6 +574,12 @@ enum N_Result isotp_receive(struct isotp_t* msg)
 					msg->reply = N_ERROR;
 					break;
 			}
+		}
+		if(timer_overflow(&msg->N_Cr, N_CR_TIMEOUT))
+		{
+			msg->reply = N_TIMEOUT_Cr;
+			err = ERR_TIMEOUT;
+			msg->tp_state = ISOTP_ERROR;
 		}
 	}
 
