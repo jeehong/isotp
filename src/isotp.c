@@ -55,8 +55,6 @@ enum n_pci_type_e
 #define TIMEOUT_CF			(250UL) /* Timeout between CFs                          */
 #define MAX_FCWAIT_FRAME	(10UL)
 
-void delay_1ms(uint16_t ms1);
-void delay_100us(uint16_t us100);
 static uint32_t systickms(void);
 static void send_init(struct isotp_t* msg);
 static ERROR_CODE send_fc(struct isotp_t* msg);
