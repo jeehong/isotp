@@ -1,6 +1,7 @@
 #ifndef __TIMER_H__
 #define __TIMER_H__
 
+#include <unistd.h>
 #include "comm_typedef.h"
 
 struct timer_t

@@ -1,5 +1,6 @@
 #include "isotp.h"
 #include <string.h>
+#include <stdio.h>
 
 /* N_PCI type values in bits 7-4 of N_PCI bytes */
 enum n_pci_type_e
@@ -47,7 +48,7 @@ enum n_pci_type_e
  * ConsecutiveFrames that can be received without an intermediate FC frame from the receiving network
  * entity.
  */
-#define FC_DEFAULT_BS	0UL
+#define FC_DEFAULT_BS	1UL
 
 /* Timeout values */
 #define TIMEOUT_SESSION		(500UL) /* Timeout between successfull send and isotp_receive */
@@ -123,7 +124,7 @@ ERROR_CODE fc_set(struct isotp_t *msg, enum ISOTP_FS_e FS, uint8_t BS, uint8_t S
 	{
 		msg->FS = FS;	/* Flow control status */
 		msg->BS = BS;		/* block size, setting value */
-		msg->BS_Counter = BS;
+		//msg->BS_Counter = BS;
 		msg->STmin = STmin;
 	}
 
@@ -320,9 +321,12 @@ static ERROR_CODE rcv_ff(struct isotp_t* msg)
 		memcpy(msg->Buffer + msg->buffer_index, data + 2UL, 6UL);
 		msg->buffer_index += 6UL;
 		msg->rest -= 6UL; /* Rest length */
+		msg->BS_Counter = msg->BS;
 		msg->tp_state = ISOTP_WAIT_DATA;
-		msg->FS = ISOTP_FS_CTS;	/* continue to send */
-		msg->STmin = 10UL;		/* SeparationTime minimum (STmin) range: 0 ms ¨C 127 ms */
+		/* continue to send */
+		/* msg->FS = ISOTP_FS_CTS; */
+		/* SeparationTime minimum (STmin) range: 0 ms ¨C 127 ms */
+		/* msg->STmin = 10UL; */
 		err = send_fc(msg);
 	}
 
@@ -379,11 +383,11 @@ static ERROR_CODE rcv_cf(struct isotp_t* msg)
 			if(msg->BS != 0UL
 				&& (--msg->BS_Counter) == 0UL)
 			{
-				msg->BS_Counter = msg->BS;
 				if(msg->fs_set_cb != NULL)
 				{
 					msg->fs_set_cb(msg);
 				}
+				msg->BS_Counter = msg->BS;
 				err = send_fc(msg);
 			}
 		}
@@ -404,7 +408,6 @@ static ERROR_CODE rcv_fc(struct isotp_t* msg)
 {
 	ERROR_CODE err = STATUS_NORMAL;
 	uint8_t *data = msg->isotp.phy_rx.data;
-
 	for(;;)
 	{
 		if (msg->tp_state != ISOTP_WAIT_FC 

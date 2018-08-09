@@ -18,21 +18,17 @@ static void debug_out(const char *fmt, ...);
 
 
 static struct isotp_t sender, receiver;
+static pthread_mutex_t dbg_mutex;
 
 static void debug_out(const char *fmt, ...)
 {
 	va_list vp;
-	static uint8_t is_busy = FALSE;
 
-	while(is_busy == TRUE)	/* waitting for the mutex unlocked */
-	{
-		;
-	}
-	is_busy = TRUE;
+	pthread_mutex_lock(&dbg_mutex);
 	va_start(vp, fmt);
 	vprintf(fmt, vp);
 	va_end(vp);
-	is_busy = FALSE;
+	pthread_mutex_unlock(&dbg_mutex);
 }
 
 void *rx_thread(void *arg)
@@ -76,7 +72,7 @@ void main(void)
 	 * 1UL: (BS)
 	 * 10UL: STmin
 	 */
-	fc_set(&receiver, ISOTP_FS_CTS, 1UL, 10UL);
+	fc_set(&receiver, ISOTP_FS_CTS, 10UL, 100UL);
 
 	/* create isotp_receive service */
 	pthread_create(&rc_task, /*(const pthread_attr_t *)*/NULL, rx_thread, NULL);
@@ -92,6 +88,8 @@ void main(void)
 
 	/* Test 2,consecutive frame */
 	sender.DL = 256UL;
+	pthread_mutex_init(&dbg_mutex, NULL);
+	
 	debug_out("Consecutive Frame test,DL:%d\r\n", sender.DL);
 	for(index = 0; index < sender.DL; index ++)
 	{
@@ -191,7 +189,14 @@ static ERROR_CODE receiver_test_receive(struct phy_msg_t *msg)
 
 static ERROR_CODE receiver_set_FS(struct isotp_t* msg)
 {
-	msg->FS = ISOTP_FS_CTS;
+	/*
+	 * set special parameters of flow control status
+	 * receiver: operate object
+	 * ISOTP_FS_CTS: Continue To Send
+	 * 1UL: (BS)
+	 * 10UL: STmin
+	 */
+	fc_set(&receiver, ISOTP_FS_CTS, 10UL, 100UL);
 	debug_out("Rcer-FC-reply FS:%d BS:%d STmin:%d\r\n", msg->FS, msg->BS, msg->STmin);
 	return STATUS_NORMAL;
 }
