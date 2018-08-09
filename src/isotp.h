@@ -76,7 +76,7 @@ struct isotp_msg_t
 	isotp_transfer phy_receive;
 };
 
-typedef struct isotp_t
+struct isotp_t
 {
 	uint16_t DL;		/* data length */
 	isotp_states_t tp_state;

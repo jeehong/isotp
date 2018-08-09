@@ -3,7 +3,7 @@
 
 #include "comm_typedef.h"
 
-typedef struct timer_t
+struct timer_t
 {
     Bool enable;
     Bool timeout;
@@ -36,7 +36,7 @@ void timer_add(struct timer_t *timer);
  *	timer: timer object
  * @Return: NULL
  */
-void timer_delete(struct timer_t *timer);
+void xtimer_delete(struct timer_t *timer);
 
 /*
  * @Function: check if the timer is out of time

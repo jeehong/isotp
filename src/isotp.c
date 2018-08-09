@@ -55,7 +55,6 @@ enum n_pci_type_e
 #define TIMEOUT_CF			(250UL) /* Timeout between CFs                          */
 #define MAX_FCWAIT_FRAME	(10UL)
 
-static uint32_t systickms(void);
 static void send_init(struct isotp_t* msg);
 static ERROR_CODE send_fc(struct isotp_t* msg);
 static ERROR_CODE send_sf(struct isotp_t* msg);
@@ -105,8 +104,8 @@ static void send_init(struct isotp_t* msg)
 	msg->BS_Counter = FC_DEFAULT_BS;	/* block size, setting value */
 	msg->STmin = 0UL;
 	msg->rest = 0UL;		/* mutilate frame remaining part */
-	timer_delete(&msg->N_Bs);
-	timer_delete(&msg->N_Cr);
+	xtimer_delete(&msg->N_Bs);
+	xtimer_delete(&msg->N_Cr);
 	msg->buffer_index = 0UL;
 	msg->reply = N_OK;
 	msg->isotp.phy_rx.new_data = FALSE;
@@ -184,7 +183,7 @@ static ERROR_CODE send_fc(struct isotp_t *msg)
 	}
 	else
 	{
-		timer_delete(&msg->N_Cr);
+		xtimer_delete(&msg->N_Cr);
 	}
 	memset(data, 0UL, 8UL);
 	/* FC message high nibble = 0x3 , low nibble = FC Status */
@@ -437,7 +436,7 @@ static ERROR_CODE rcv_fc(struct isotp_t* msg)
 		{
 			case ISOTP_FS_CTS:
 				msg->tp_state = ISOTP_SEND_CF;
-				timer_delete(&msg->N_Bs);
+				xtimer_delete(&msg->N_Bs);
 				break;
 			case ISOTP_FS_WAIT:
 				timer_refresh(&msg->N_Bs);
@@ -493,7 +492,7 @@ enum N_Result isotp_send(struct isotp_t* msg)
 				{
 					msg->tp_state = ISOTP_IDLE;
 					err = ERR_TIMEOUT;
-					timer_delete(&msg->N_Bs);
+					xtimer_delete(&msg->N_Bs);
 				}
 				/* break; */
 			case ISOTP_WAIT_FC:

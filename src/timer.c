@@ -1,7 +1,7 @@
 #include "timer.h"
 
 #define time_after(a,b)  \
-((long)(b) - (long)(a) < 0)
+((long)(b) - (long)(a) <= 0)
 
 #define time_before(a,b) time_after(b,a)
 
@@ -27,6 +27,7 @@ void delay_1ms(uint16_t ms1)
 			;
 		}
 	}*/
+	usleep(999);
 }
 
 void delay_100us(uint16_t us100)
@@ -40,6 +41,7 @@ void delay_100us(uint16_t us100)
 			;
 		}
 	}*/
+	usleep(99);
 }
 
 void timer_add(struct timer_t *timer)
@@ -58,7 +60,7 @@ void timer_refresh(struct timer_t *timer)
 	}
 }
 
-void timer_delete(struct timer_t * timer)
+void xtimer_delete(struct timer_t * timer)
 {
     timer->enable = FALSE;
 }

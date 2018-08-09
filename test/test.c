@@ -98,7 +98,7 @@ void main(void)
 		sender.Buffer[index] = (uint8_t)index;
 	}
 	isotp_send(&sender);
-	
+	pthread_cancel(rc_task);
 	/* waitting for ending of the isotp_receive task */
 	pthread_join(rc_task, /*(void **)*/NULL);
 }

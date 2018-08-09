@@ -52,6 +52,15 @@ typedef struct queue *queueP_t;
 ERROR_CODE queue_init(queueP_t queue, uint16_t size, uint32_t depth);
 
 /*
+ * 函数名: queue_deinit
+ * 功能: 队列解初始化，释放动态申请空间
+ *       仅适用于由queue_init初始化的队列
+ * 输入:
+ *		queue: 要需要初始化的队列
+ * 输出 无
+ */
+void queue_deinit(queueP_t queue);
+/*
  * 函数名: queue_init2
  * 功能: 队列初始化，静态空间
  * 输入:
