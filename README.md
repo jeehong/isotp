@@ -6,7 +6,9 @@
 
 ## **测试环境搭建**
 ### 测试平台
-_Visual Studio 2010_
+- _Visual Studio 2010_
+- _Linux environment_
+
 ### 环境搭建
 #### Windows Platform
 - **为VS2010添加pthread库**
