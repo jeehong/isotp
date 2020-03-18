@@ -1,75 +1,70 @@
 #include "timer.h"
 
-#define time_after(a,b)  \
-((long)(b) - (long)(a) <= 0)
+#define time_after(a,b)         ((long)(b) - (long)(a) <= 0)
 
-#define time_before(a,b) time_after(b,a)
+#define time_before(a,b)        time_after(b,a)
 
-#define time_interval(now,pre) ((long)(now) - (long)(pre)) 
+#define time_interval(now,pre)  ((long)(now) - (long)(pre)) 
 
-/* 
- * function: system tick
- * This functionality needs to be reimplemented on your platform.
- */
-static uint32_t systickms(void)
+static U32 (*gTmr_tickMsFxn)(void);
+static U8 gTmrcountType, gTmrtickFactor;
+
+ERROR_CODE timer_init(U32 (*tickMs)(void), U8 countType, U8 tickFactor)
 {
-	return 0;
-}
+    ERROR_CODE retVal = STATUS_NORMAL;
 
+    if (tickMs == NULL)
+    {
+        retVal = ERR_POINTER_0;
+    }
+    else
+    {
+        gTmr_tickMsFxn = tickMs;
+        gTmrcountType  = countType;
+        gTmrtickFactor = tickFactor;
+    }
 
-void delay_1ms(uint16_t ms1)
-{
-	/*uint16_t i, j;
-	for(i = 0UL; i < 1000UL; i ++)
-	{
-		for(j = 0UL; j < 1000UL; j ++)
-		{
-			;
-		}
-	}*/
-	usleep(999);
-}
-
-void delay_100us(uint16_t us100)
-{
-	/*uint16_t i, j;
-	
-	for(i = 0UL; i < 100UL; i ++)
-	{
-		for(j = 0UL; j < 1000UL; j ++)
-		{
-			;
-		}
-	}*/
-	usleep(99);
+    return retVal;
 }
 
 void timer_add(struct timer_t *timer)
 {
-	timer->enable = TRUE;
-	timer->timeout = FALSE;
-	timer->curtime = systickms();
+    if (gTmr_tickMsFxn != NULL)
+    {
+        timer->enable = TRUE;
+        timer->timeout = FALSE;
+        timer_refresh(timer);
+    }
+    else
+    {
+        timer->enable = FALSE;
+    }
 }
-
 
 void timer_refresh(struct timer_t *timer)
 {
-	if(timer->enable == TRUE)
-	{
-		timer->curtime = systickms();
-	}
+    if(timer->enable == TRUE)
+    {
+        timer->markTime = gTmr_tickMsFxn();
+    }
 }
 
-void xtimer_delete(struct timer_t * timer)
+void timer_xdelete(struct timer_t * timer)
 {
     timer->enable = FALSE;
 }
 
-Bool timer_overflow(struct timer_t * timer, uint32_t period_ms)
+Bool timer_overflow(struct timer_t * timer, U32 period_ms)
 {
     if(timer->enable)
     {
-        if(time_after(systickms(), timer->curtime + period_ms))
+        if (gTmrcountType == TIMER_COUNT_UP
+            && time_after(gTmr_tickMsFxn(), timer->markTime + period_ms * gTmrtickFactor))
+        {
+            timer->timeout = TRUE;
+        }
+        else if (gTmrcountType == TIMER_COUNT_DOWN
+            && time_before(gTmr_tickMsFxn(), timer->markTime - period_ms * gTmrtickFactor))
         {
             timer->timeout = TRUE;
         }
@@ -84,6 +79,28 @@ Bool timer_overflow(struct timer_t * timer, uint32_t period_ms)
     }
 
     return timer->timeout;
+}
+
+U32 timer_interval(struct timer_t * timer)
+{
+    U32 interVal = 0u;
+
+    if (gTmrcountType == TIMER_COUNT_UP)
+    {
+        interVal = (S32)gTmr_tickMsFxn() - (S32)timer->markTime;
+    }
+    else if (gTmrcountType == TIMER_COUNT_DOWN)
+    {
+        interVal = (S32)timer->markTime - (S32)gTmr_tickMsFxn();
+    }
+    else
+    {
+        interVal = 0u;
+    }
+
+    interVal /= gTmrtickFactor;
+
+    return interVal;
 }
 
 Bool timer_is_added(struct timer_t  *timer)

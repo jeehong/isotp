@@ -1,27 +1,32 @@
 #ifndef __TIMER_H__
 #define __TIMER_H__
 
-#include <unistd.h>
 #include "comm_typedef.h"
+
+/* s32k lpit timer count in down mode */
+/* win32 system timer count in up mode */
+#define TIMER_COUNT_UP      (0u)
+#define TIMER_COUNT_DOWN    (1u)
+
 
 struct timer_t
 {
     Bool enable;
     Bool timeout;
-    uint32_t curtime;
+    U32  markTime;
 };
 
-/* 
- * function: delay 1ms
- * This functionality needs to be reimplemented on your platform.
+/*
+ * @Function: initialize timer module
+ * @Parameter: 
+ *  tickUs: tick function, millisecond(0x0-0xFFFFFFFF)
+ *  should modify TIMER_FACTOR_MS to match microsecond.
+ *  e.g. tickUs outputs 1 tick = 1/8ms, so TIMER_FACTOR_MS = 8u
+ * @Return: ERROR_CODE
+ *      STATUS_NORMAL tickUs is valid
+ *      ERR_POINTER_0 tickUs is not found
  */
-void delay_1ms(uint16_t ms1);
-
-/* 
- * function: delay 100us
- * This functionality needs to be reimplemented on your platform.
- */
-void delay_100us(uint16_t us100);
+ERROR_CODE timer_init(U32 (*tickUs)(void), U8 countType, U8 tickFactor);
 
 /*
  * @Function: enable a timer and record current system tick
@@ -37,7 +42,7 @@ void timer_add(struct timer_t *timer);
  *	timer: timer object
  * @Return: NULL
  */
-void xtimer_delete(struct timer_t *timer);
+void timer_xdelete(struct timer_t *timer);
 
 /*
  * @Function: check if the timer is out of time
@@ -47,7 +52,7 @@ void xtimer_delete(struct timer_t *timer);
  *	TRUE: the timer is out of time
  *	FLASE: the time is not out of time
  */
-Bool timer_overflow(struct timer_t * timer, uint32_t period_ms);
+Bool timer_overflow(struct timer_t * timer, U32 period_ms);
 
 /*
  * @Function: check if the timer is enabled
@@ -66,6 +71,14 @@ Bool timer_is_added(struct timer_t  *timer);
  * @Return: NULL
  */
 void timer_refresh(struct timer_t * timer);
+
+/*
+ * @Function: get interval for timer
+ * @Parameter: 
+ *  timer: timer object
+ * @Return: interval, unit:MS
+ */
+U32 timer_interval(struct timer_t * timer);
 
 
 #endif
