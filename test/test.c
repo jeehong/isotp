@@ -127,10 +127,11 @@ void main(void)
         sender.Buffer[index] = (uint8_t)index;
     }
     isotp_send(&sender);
-    pthread_cancel(rc_task);
+    //pthread_cancel(rc_task);
     /* waitting for ending of the isotp_receive task */
-    pthread_join(rc_task, /*(void **)*/NULL);
+    //pthread_join(rc_task, /*(void **)*/NULL);
     debug_out("Done!\r\n");
+    sleep(1);
 }
 
 static ERROR_CODE sender_test_send(struct phy_msg_t *msg)
